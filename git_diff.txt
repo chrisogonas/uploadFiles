@@ -1,0 +1,381 @@
+diff --git a/src/ROSETTA/astNodeList b/src/ROSETTA/astNodeList
+index d1830a7..58568f7 100644
+--- a/src/ROSETTA/astNodeList
++++ b/src/ROSETTA/astNodeList
+@@ -547,6 +547,7 @@ SgOmpPrivateClause
+ SgOmpReductionClause
+ SgOmpScheduleClause
+ SgOmpSharedClause
++SgOmpAllocateClause
+ SgOmpUntiedClause
+ SgOmpMergeableClause
+ SgOmpVariablesClause
+diff --git a/src/ROSETTA/src/node.C b/src/ROSETTA/src/node.C
+index 2ae4449..c13bed9 100644
+--- a/src/ROSETTA/src/node.C
++++ b/src/ROSETTA/src/node.C
+@@ -68,6 +68,7 @@ Grammar::setUpNodes ()
+            *** SgOmpReductionClause
+         */
+      NEW_TERMINAL_MACRO (OmpOrderedClause, "OmpOrderedClause", "OmpOrderedClauseTag" );
++     NEW_TERMINAL_MACRO (OmpAllocateClause, "OmpAllocateClause", "OmpAllocateClauseTag" );	 	 
+      NEW_TERMINAL_MACRO (OmpNowaitClause, "OmpNowaitClause", "OmpNowaitClauseTag" );
+      NEW_TERMINAL_MACRO (OmpBeginClause, "OmpBeginClause", "OmpBeginClauseTag" );
+      NEW_TERMINAL_MACRO (OmpEndClause, "OmpEndClause", "OmpEndClauseTag" );
+@@ -89,14 +90,14 @@ Grammar::setUpNodes ()
+      NEW_TERMINAL_MACRO (OmpSimdlenClause, "OmpSimdlenClause", "OmpSimdlenTag" );
+ 
+      NEW_NONTERMINAL_MACRO (OmpExpressionClause, OmpOrderedClause | OmpCollapseClause | OmpIfClause | OmpNumThreadsClause | OmpDeviceClause |
+-                            OmpSafelenClause | OmpSimdlenClause | OmpFinalClause | OmpPriorityClause
++                            OmpAllocateClause | OmpSafelenClause | OmpSimdlenClause | OmpFinalClause | OmpPriorityClause
+          ,"OmpExpressionClause", "OmpExpressionClauseTag",false );
+ 
+ 
+      NEW_TERMINAL_MACRO (OmpCopyprivateClause, "OmpCopyprivateClause", "OmpCopyprivateClauseTag" );
+      NEW_TERMINAL_MACRO (OmpPrivateClause, "OmpPrivateClause", "OmpPrivateClauseTag" );
+      NEW_TERMINAL_MACRO (OmpFirstprivateClause, "OmpFirstprivateClause", "OmpFirstprivateClauseTag" );
+-     NEW_TERMINAL_MACRO (OmpSharedClause, "OmpSharedClause", "OmpSharedClauseTag" );
++     NEW_TERMINAL_MACRO (OmpSharedClause, "OmpSharedClause", "OmpSharedClauseTag" );	 
+      NEW_TERMINAL_MACRO (OmpCopyinClause, "OmpCopyinClause", "OmpCopyinClauseTag" );
+      NEW_TERMINAL_MACRO (OmpLastprivateClause, "OmpLastprivateClause", "OmpLastprivateClauseTag" );
+      NEW_TERMINAL_MACRO (OmpReductionClause, "OmpReductionClause", "OmpReductionClauseTag" );
+diff --git a/src/backend/unparser/languageIndependenceSupport/unparseLanguageIndependentConstructs.C b/src/backend/unparser/languageIndependenceSupport/unparseLanguageIndependentConstructs.C
+index f989942..89075af 100644
+--- a/src/backend/unparser/languageIndependenceSupport/unparseLanguageIndependentConstructs.C
++++ b/src/backend/unparser/languageIndependenceSupport/unparseLanguageIndependentConstructs.C
+@@ -6760,6 +6760,9 @@ void UnparseLanguageIndependentConstructs::unparseOmpVariablesClause(SgOmpClause
+     case V_SgOmpSharedClause:
+       curprint(string(" shared("));
+       break;
++    case V_SgOmpAllocateClause:
++      curprint(string(" allocate("));
++      break;
+     default:
+       cerr<<"Error: unhandled clause type in UnparseLanguageIndependentConstructs::unparseOmpVariablesClause ():"<< clause->class_name()<<endl;
+       ROSE_ASSERT(false);
+@@ -7035,6 +7038,7 @@ void UnparseLanguageIndependentConstructs::unparseOmpClause(SgOmpClause* clause,
+     case V_SgOmpDependClause:
+     case V_SgOmpMapClause:
+     case V_SgOmpSharedClause:
++    case V_SgOmpAllocateClause:
+     case V_SgOmpUniformClause:
+     case V_SgOmpAlignedClause:
+     case V_SgOmpLinearClause: 
+diff --git a/src/frontend/SageIII/OmpAttribute.C b/src/frontend/SageIII/OmpAttribute.C
+index 811cc5f..af563b5 100644
+--- a/src/frontend/SageIII/OmpAttribute.C
++++ b/src/frontend/SageIII/OmpAttribute.C
+@@ -739,6 +739,7 @@ namespace OmpSupport
+       // clauses
+       case e_default: result = "default"; break;
+       case e_shared: result = "shared"; break;
++      case e_allocate: result = "allocate"; break;
+       case e_private: result = "private"; break;
+       case e_firstprivate: result = "firstprivate"; break;
+       case e_lastprivate: result = "lastprivate"; break;
+@@ -1148,6 +1149,7 @@ namespace OmpSupport
+     { //total 15 possible clauses as OpenMP 3.0
+       case e_default:
+       case e_shared:
++      case e_allocate:
+       case e_private:
+       case e_firstprivate:
+       case e_lastprivate:
+diff --git a/src/frontend/SageIII/OmpAttribute.h b/src/frontend/SageIII/OmpAttribute.h
+index 4c3a1a3..6c2b4fd 100644
+--- a/src/frontend/SageIII/OmpAttribute.h
++++ b/src/frontend/SageIII/OmpAttribute.h
+@@ -88,6 +88,7 @@ namespace OmpSupport
+     // 7 data-sharing attributes clauses
+     e_default, // the clause
+     e_shared,
++    e_allocate,
+     e_private,
+     e_firstprivate,
+     e_lastprivate,
+diff --git a/src/frontend/SageIII/astMerge/collectAssociateNodes.C b/src/frontend/SageIII/astMerge/collectAssociateNodes.C
+index 73e0961..9e4aa7e 100755
+--- a/src/frontend/SageIII/astMerge/collectAssociateNodes.C
++++ b/src/frontend/SageIII/astMerge/collectAssociateNodes.C
+@@ -1813,6 +1813,7 @@ addAssociatedNodes ( SgNode* node, set<SgNode*> & nodeList, bool markMemberNodes
+           case V_SgOmpSectionsStatement:  
+           case V_SgOmpSectionStatement :  
+           case V_SgOmpSharedClause     :  
++          case V_SgOmpAllocateClause   :  
+           case V_SgOmpSingleStatement  :  
+           case V_SgOmpDeclareSimdStatement  :  
+           case V_SgOmpSimdStatement  :  
+diff --git a/src/frontend/SageIII/nodeBuildFunctionsForAterms.C b/src/frontend/SageIII/nodeBuildFunctionsForAterms.C
+index 3ef74bb..7b49d95 100644
+--- a/src/frontend/SageIII/nodeBuildFunctionsForAterms.C
++++ b/src/frontend/SageIII/nodeBuildFunctionsForAterms.C
+@@ -2729,6 +2729,18 @@ SgOmpSharedClause* SgOmpSharedClause::build_node_from_nonlist_children ( Sg_File
+      return returnNode;
+    }
+ 
++// Generated static function for building IR nodes for Aterm support (like a constructor).
++SgOmpAllocateClause* SgOmpAllocateClause::build_node_from_nonlist_children ( Sg_File_Info* startOfConstruct , SgExpression* expression )
++   {
++#if 0
++  // debugging information!
++     printf ("In SgOmpAllocateClause::build_node_from_nonlist_children (Sg_File_Info* startOfConstruct): this = %p = %s \n",this,this->class_name().c_str());
++#endif
++
++     SgOmpAllocateClause* returnNode = NULL;
++
++     return returnNode;
++   }
+ 
+ /* #line 2646 "../../../src/frontend/SageIII//Cxx_GrammarAtermNodeBuildFunctions.C" */
+ 
+diff --git a/src/frontend/SageIII/ompAstConstruction.cpp b/src/frontend/SageIII/ompAstConstruction.cpp
+index 168b6f8..eb05659 100644
+--- a/src/frontend/SageIII/ompAstConstruction.cpp
++++ b/src/frontend/SageIII/ompAstConstruction.cpp
+@@ -246,7 +246,7 @@ namespace OmpSupport
+         break;
+       case e_default_shared:
+         sg_dv = SgOmpClause::e_omp_default_shared;
+-        break;
++        break;	
+       case e_default_private:
+         sg_dv = SgOmpClause::e_omp_default_private;
+         break;
+@@ -413,7 +413,7 @@ namespace OmpSupport
+       SgExpression* newExp = clause_expression;
+       // ordered (n): optional (n)
+       if (clause_expression == NULL && clause_type == e_ordered_clause)
+-         return NULL; 
++         return NULL; 	 
+       ROSE_ASSERT(clause_expression != NULL);
+       bool returnNewExpression = false;
+       if( isSgTypeUnknown( clause_expression->get_type( ) ) )
+@@ -511,7 +511,14 @@ namespace OmpSupport
+           result = new SgOmpOrderedClause(param);
+           break;
+         }
+- 
++       case e_allocate:
++        {
++		  // printf("In buildOmpExpressionClause function, e_allocate case - start\n");
++          SgExpression* allocateParam = checkOmpExpressionClause( att->getExpression(e_allocate).second, global, e_allocate);
++          result = new SgOmpAllocateClause(allocateParam);
++		  // printf("In buildOmpExpressionClause function, e_allocate case - end\n");
++          break;
++        }
+       case e_collapse:
+         {
+           SgExpression* collapseParam = checkOmpExpressionClause( att->getExpression(e_collapse).second, global, e_collapse );
+@@ -622,6 +629,18 @@ namespace OmpSupport
+     return result;
+   }
+ #endif
++#if 0
++  SgOmpAllocateClause * buildOmpAllocateClause(OmpAttribute* att)
++  {
++    ROSE_ASSERT(att != NULL);
++    if (!att->hasClause(e_allocate))
++      return NULL;
++    SgOmpAllocateClause* result = new SgOmpAllocateClause();
++    ROSE_ASSERT(result);
++    setOneSourcePositionForTransformation(result);
++    return result;
++  }
++#endif
+   SgOmpUntiedClause * buildOmpUntiedClause(OmpAttribute* att)
+   {
+     ROSE_ASSERT(att != NULL);
+@@ -1070,6 +1089,11 @@ namespace OmpSupport
+           result = new SgOmpSharedClause(explist);
+           break;
+         }
++//      case e_allocate:
++//        {
++//          result = new SgOmpAllocateClause(explist);
++//          break;
++//        }		
+      case e_linear: // TODO: need better solution for clauses with both variable list and expression. 
+         { // TODO checkOmpExpressionClause() to handle macro
+           SgExpression* stepExp= att->getExpression(e_linear).second;
+@@ -1144,6 +1168,13 @@ namespace OmpSupport
+           break;
+         }
+ #endif        
++#if 0      
++      case e_allocate:
++        {
++          result = buildOmpAllocateClause(att); 
++          break;
++        }
++#endif 
+       case e_schedule:
+         {
+           result = buildOmpScheduleClause(att);
+@@ -1176,9 +1207,11 @@ namespace OmpSupport
+       case e_num_threads:
+       case e_device:
+       case e_safelen:
+-      case e_simdlen:
++      case e_simdlen:  
++      case e_allocate:	  
+       case e_ordered_clause:
+         {
++		  // printf("In buildOmpNonReductionClause function, e_allocate case - start\n");
+           result = buildOmpExpressionClause(att, c_clause_type);
+           break;
+         }
+@@ -1680,6 +1713,7 @@ namespace OmpSupport
+           // unique clauses allocated to omp for  or omp for simd
+         case e_schedule:
+         case e_collapse:
++		case e_allocate:		
+         case e_ordered_clause:
+         case e_safelen:
+         case e_simdlen:
+diff --git a/src/frontend/SageIII/omplexer.ll b/src/frontend/SageIII/omplexer.ll
+index 00ea2c5..588ae60 100644
+--- a/src/frontend/SageIII/omplexer.ll
++++ b/src/frontend/SageIII/omplexer.ll
+@@ -108,6 +108,7 @@ firstprivate    { return cond_return ( FIRSTPRIVATE ); }
+ lastprivate     { return cond_return ( LASTPRIVATE ); }
+ default         { return cond_return ( DEFAULT ); }
+ shared          { return cond_return ( SHARED ); } 
++allocate		{ return cond_return ( ALLOCATE ); }
+ none            { return cond_return ( NONE ); } 
+ reduction       { return cond_return ( REDUCTION ); }
+ copyin          { return cond_return ( COPYIN ); }
+diff --git a/src/frontend/SageIII/ompparser.yy b/src/frontend/SageIII/ompparser.yy
+index e5375fb..155c33f 100644
+--- a/src/frontend/SageIII/ompparser.yy
++++ b/src/frontend/SageIII/ompparser.yy
+@@ -113,7 +113,7 @@ corresponding C type is union name defaults to YYSTYPE.
+ /*Some operators have a suffix 2 to avoid name conflicts with ROSE's existing types, We may want to reuse them if it is proper. 
+   experimental BEGIN END are defined by default, we use TARGET_BEGIN TARGET_END instead. 
+   Liao*/
+-%token  OMP PARALLEL IF NUM_THREADS ORDERED SCHEDULE STATIC DYNAMIC GUIDED RUNTIME SECTIONS SINGLE NOWAIT SECTION
++%token  OMP PARALLEL IF NUM_THREADS ALLOCATE ORDERED SCHEDULE STATIC DYNAMIC GUIDED RUNTIME SECTIONS SINGLE NOWAIT SECTION
+         FOR MASTER CRITICAL BARRIER ATOMIC FLUSH TARGET UPDATE DIST_DATA BLOCK DUPLICATE CYCLIC
+         THREADPRIVATE PRIVATE COPYPRIVATE FIRSTPRIVATE LASTPRIVATE SHARED DEFAULT NONE REDUCTION COPYIN 
+         TASK TASKWAIT UNTIED COLLAPSE AUTO DECLARE DATA DEVICE MAP ALLOC TO FROM TOFROM PROC_BIND CLOSE SPREAD
+@@ -211,6 +211,7 @@ proc_bind_clause : PROC_BIND '(' MASTER ')' {
+ /*  follow the order in the 4.5 specification  */ 
+ parallel_clause : if_clause
+                 | num_threads_clause
++                | allocate_clause
+                 | default_clause
+                 | private_clause
+                 | firstprivate_clause
+@@ -252,6 +253,7 @@ for_clause: private_clause
+            | schedule_clause
+            | collapse_clause
+            | ordered_clause
++           | allocate_clause
+            | nowait_clause  
+           ; 
+ 
+@@ -264,6 +266,7 @@ for_or_simd_clause : ordered_clause
+            | reduction_clause
+            | collapse_clause
+            | unique_simd_clause
++           | allocate_clause
+            | nowait_clause  
+           ;
+ 
+@@ -285,6 +288,18 @@ ordered_parameter_opt: /* empty */
+                    }
+                  ;
+ 
++allocate_clause : ALLOCATE {
++                      ompattribute->addClause(e_allocate);
++                      omptype = e_allocate;
++                } allocate_parameter_opt
++               ;
++
++allocate_parameter_opt: /* empty */
++                | '(' expression ')' {
++                    addExpression("");
++                   }
++                 ;
++			   
+ schedule_clause: SCHEDULE '(' schedule_kind {
+                       ompattribute->addClause(e_schedule);
+                       ompattribute->setScheduleKind(static_cast<omp_construct_enum>($3));
+@@ -384,6 +399,7 @@ task_clause : unique_task_clause
+             | private_clause
+             | firstprivate_clause
+             | share_clause
++            | allocate_clause
+             | depend_clause
+             | if_clause
+             ;
+@@ -453,6 +469,7 @@ nowait clause, updated for 4.5.
+ */
+ parallel_for_clause : if_clause
+                     | num_threads_clause
++                    | allocate_clause
+                     | default_clause
+                     | private_clause
+                     | firstprivate_clause
+@@ -494,6 +511,7 @@ parallel_for_simd_clause: copyin_clause
+                     | share_clause
+                     | if_clause
+                     | num_threads_clause
++                    | allocate_clause
+                     | proc_bind_clause
+                    ; 
+  
+@@ -522,6 +540,7 @@ parallel_sections_clause : copyin_clause
+                          | reduction_clause
+                          | if_clause
+                          | num_threads_clause
++                         | allocate_clause
+                          | proc_bind_clause
+                          ;
+ 
+@@ -646,6 +665,11 @@ share_clause : SHARED {
+                       } '(' {b_within_variable_list = true;} variable_list ')' {b_within_variable_list = false;}
+                     ;
+ 
++// allocate_clause : ALLOCATE {
++//                        ompattribute->addClause(e_allocate); omptype = e_allocate; 
++//                      } '(' {b_within_variable_list = true;} variable_list ')' {b_within_variable_list = false;}
++//                    ;
++
+ reduction_clause : REDUCTION { 
+                           ompattribute->addClause(e_reduction);
+                         } '(' reduction_operator ':' {b_within_variable_list = true;} variable_list ')' {b_within_variable_list = false;}
+@@ -791,6 +815,7 @@ num_threads_clause: NUM_THREADS {
+                             addExpression("");
+                          }
+                       ;
++
+ map_clause: MAP {
+                           ompattribute->addClause(e_map);
+                            omptype = e_map; // use as a flag to see if it will be reset later
+diff --git a/src/midend/programTransformation/ompLowering/omp_lowering.cpp b/src/midend/programTransformation/ompLowering/omp_lowering.cpp
+index 77e0ca8..2da8989 100644
+--- a/src/midend/programTransformation/ompLowering/omp_lowering.cpp
++++ b/src/midend/programTransformation/ompLowering/omp_lowering.cpp
+@@ -178,6 +178,10 @@ namespace OmpSupport
+     {
+       rt_val = e_shared;
+     }
++    else if (isInClauseVariableList( iname, omp_clause_body_stmt, V_SgOmpAllocateClause))
++    {
++      rt_val = e_allocate;
++    }	
+     else if (isInClauseVariableList( iname, omp_clause_body_stmt, V_SgOmpReductionClause))
+     {
+       rt_val = e_reduction;
+diff --git a/tests/nonsmoke/functional/CompileTests/OpenMP_tests/Makefile.am b/tests/nonsmoke/functional/CompileTests/OpenMP_tests/Makefile.am
+index 8200caf..b47c620 100644
+--- a/tests/nonsmoke/functional/CompileTests/OpenMP_tests/Makefile.am
++++ b/tests/nonsmoke/functional/CompileTests/OpenMP_tests/Makefile.am
+@@ -123,6 +123,7 @@ C_TESTCODES_REQUIRED_TO_PASS = \
+ 	section1.c \
+ 	set_num_threads.c \
+ 	shared.c \
++        parallel_allocate.c \
+ 	simd.c \
+ 	simd2.c \
+ 	single.c \
